@@ -19,18 +19,32 @@ logger = get_logger(__name__)
 class MASCoordinatorApplication(ChatCompletion):
 
     async def chat_completion(self, request: Request, response: Response) -> None:
-        #TODO:
-        # 1. Create single choice with context manager
-        # 2. Create MASCoordinator and handle request
-        raise NotImplementedError()
+        conversation_id = request.headers.get('x-conversation-id', 'unknown')
+
+        try:
+            with response.create_single_choice() as choice:
+
+                await MASCoordinator(
+                    endpoint=DIAL_ENDPOINT,
+                    deployment_name=DEPLOYMENT_NAME,
+                    ums_agent_endpoint=UMS_AGENT_ENDPOINT
+                ).handle_request(
+                    choice=choice,
+                    request=request,
+                )
 
 
+        except Exception as err:
 
-#TODO:
-# 1. Create DIALApp
-# 2. Create MASCoordinatorApplication
-# 3. Add to created DIALApp chat_completion with:
-#       - deployment_name="mas-coordinator"
-#       - impl=agent_app
-# 4. Run it with uvicorn: `uvicorn.run({CREATED_DIAL_APP}, port=8055, host="0.0.0.0")`
+            logger.exception("Inference failed for session: %s", conversation_id)
+
+            raise err
+
+dial_app = DIALApp()
+agent_app = MASCoordinatorApplication()
+dial_app.add_chat_completion(deployment_name="mas-coordinator", impl=agent_app)
+
+if __name__ == "__main__":
+    logger.info("Starting uvicorn server on 0.0.0.0:8055")
+    uvicorn.run(dial_app, port=8055, host="0.0.0.0", log_level="info")
 
